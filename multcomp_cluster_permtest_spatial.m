@@ -17,6 +17,12 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 % of EEG- and MEG-data. Journal of Neuroscience Methods, 164, 177-190.
 % doi 10.1016/j.jneumeth.2007.03.024
 %
+% This function implements a conservative correction for p-values when
+% using permutation tests, as described by Phipson & Smyth (2010).
+% Permutation p-values should never be zero: Calculating exact p-values
+% when permutations are randomly drawn. Statistical Applications in
+% Genetics and Molecular Biology, 9, 39. doi 10.2202/1544-6115.1585
+%
 % Inputs:
 %
 %   cond1_data                      data from condition 1, 
@@ -92,8 +98,12 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %                                   effects.
 %
 %   cluster_p                       p-value of cluster, calculated as the
-%                                   percentile of the cluster mass with respect to the 
-%                                   maximum cluster mass permutation distribution.
+%                                   number of permutation sample maximum
+%                                   cluster masses larger than the observed
+%                                   cluster mass + 1 divided by the total
+%                                   number of permutations + 1. This is the
+%                                   conservative p-value correction in
+%                                   Phipson & Smyth (2010).
 %
 % Example:      [RESULTS] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, 'expected_chanlocs.mat', 'alpha', 0.05, 'iterations', 1000, 'clusteringalpha', 0.05, 'yuen_t', 1)
 %
@@ -489,15 +499,33 @@ corrected_h = cluster_corrected_sig_steps;
 t_values = uncorrected_t;
 
 % Calculating a p-value for each cluster
-cluster_p = ones(length(cluster_mass_vector), 1);
-for cluster_no = 1:length(cluster_mass_vector);
-    if cluster_mass_vector(cluster_no) > 0
-        cluster_p(cluster_no) = mean(max_pos_cluster_mass(:) >= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
-    elseif cluster_mass_vector(cluster_no) < 0
-        cluster_p(cluster_no) = mean(max_neg_cluster_mass(:) <= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
-    end
+% p-values are corrected according to Phipson and Smyth (2010) methods
+cluster_p = ones(length(cluster_mass_vector), 1); % Preallocate p-values
+
+for cluster_no = 1:length(cluster_mass_vector)
+    
+    % Calculate the number of permutation samples with cluster masses
+    % larger than the observed cluster mass for a given cluster
+    if cluster_mass_vector(cluster_no) > 0 % If a positive difference
+        b = sum(abs(max_pos_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
+    elseif cluster_mass_vector(cluster_no) < 0 % If a negative difference
+        b = sum(abs(max_neg_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
+    end    
+    p_t = (b + 1) / (n_iterations + 1); % Calculate conservative version of p-value as in Phipson & Smyth, 2010
+    
+    cluster_p(cluster_no) = p_t * 2; % Multiplied by 2 as two-tailed
+       
 end % of for cluster_no
 
+
+% 
+% for cluster_no = 1:length(cluster_mass_vector);
+%     if cluster_mass_vector(cluster_no) > 0
+%         cluster_p(cluster_no) = mean(max_pos_cluster_mass(:) >= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
+%     elseif cluster_mass_vector(cluster_no) < 0
+%         cluster_p(cluster_no) = mean(max_neg_cluster_mass(:) <= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
+%     end
+% end % of for cluster_no
 
 % Copying the results into a structure to output
 Results.uncorrected_h = uncorrected_h;

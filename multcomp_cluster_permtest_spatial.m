@@ -91,6 +91,10 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %                                   test. i.e. the null threshold for negative direction 
 %                                   effects.
 %
+%   cluster_p                       p-value of cluster, calculated as the
+%                                   percentile of the cluster mass with respect to the 
+%                                   maximum cluster mass permutation distribution.
+%
 % Example:      [RESULTS] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, 'expected_chanlocs.mat', 'alpha', 0.05, 'iterations', 1000, 'clusteringalpha', 0.05, 'yuen_t', 1)
 %
 %
@@ -484,6 +488,17 @@ end % of for cluster_no
 corrected_h = cluster_corrected_sig_steps;
 t_values = uncorrected_t;
 
+% Calculating a p-value for each cluster
+cluster_p = ones(length(cluster_mass_vector), 1);
+for cluster_no = 1:length(cluster_mass_vector);
+    if cluster_mass_vector(cluster_no) > 0
+        cluster_p(cluster_no) = mean(max_pos_cluster_mass(:) >= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
+    elseif cluster_mass_vector(cluster_no) < 0
+        cluster_p(cluster_no) = mean(max_neg_cluster_mass(:) <= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
+    end
+end % of for cluster_no
+
+
 % Copying the results into a structure to output
 Results.uncorrected_h = uncorrected_h;
 Results.corrected_h = corrected_h;
@@ -493,5 +508,5 @@ Results.cluster_channel_indices = cluster_channel_indices;
 Results.cluster_mass_vector = cluster_mass_vector;
 Results.cluster_mass_null_cutoff_pos = cluster_mass_null_cutoff_pos;
 Results.cluster_mass_null_cutoff_neg = cluster_mass_null_cutoff_neg;
-
+Results.cluster_p = cluster_p;
 end % of function

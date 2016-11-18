@@ -6,7 +6,7 @@
 % Written by DF on 10/16
 
 % Housekeeping
-clear all;
+% clear all;
 close all;
 
 % See random number generator based on computer clock
@@ -14,9 +14,11 @@ rng('shuffle');
 
 % Simulation variables
 useRealData = 0; % 1 = Use permuted data from Unexpected Oddball Exp 1; 0 = Use simulated data
-nIterations = 10000; % Number of iterations
+nIterations = 100; % Number of iterations
+nIterationsPermtest = 1000; % Number of iterations to use within multiple comparisons correction function (default = 1000)
 useRobust = 0; % 1 = Use yuen's t test; 0 = Use standard t test
 alphaLevel = 0.05; % Testwise alpha level
+clusteringAlpha = 0.05; % Alpha level used to determeine whether individual electrodes will be included within a cluster
 
 % Determine minimum cluster size (minimum number of channels in cluster to be declared a sig. effect)
 minClusterSizes = [1:10]; 
@@ -67,19 +69,24 @@ for iteration = 1:nIterations
         
     % Perform the mass-univariate testing (robust version)
     if useRobust == 1
+        
+        [Results] = multcomp_cluster_permtest_spatial(dataset_1, dataset_2, 'expected_chanlocs.mat', 'alpha', alphaLevel, 'clusteringalpha', clusteringAlpha, 'iterations', nIterationsPermtest, 'yuen_t', 1);
+
     elseif useRobust == 0
-        [corrected_h, t, cluster_chan_inds, cluster_mass_vector, cluster_mass_null_cutoff_pos, cluster_mass_null_cutoff_neg] = multcomp_cluster_permtest_spatial(dataset_1, dataset_2, 'expected_chanlocs.mat', 'alpha', alphaLevel);
+        
+        [Results] = multcomp_cluster_permtest_spatial(dataset_1, dataset_2, 'expected_chanlocs.mat', 'alpha', alphaLevel, 'clusteringalpha', clusteringAlpha, 'iterations', nIterationsPermtest);
+    
     end
     
     % Check for sig. clusters and cluster size constraints. Declare if a
     % Type 1 error has occured (weak FWER error control)
     for clusterSizeThreshold = 1:length(minClusterSizes)
-        for j = 1:length(cluster_mass_vector)
-            if cluster_mass_vector(j) > cluster_mass_null_cutoff_pos && length(cluster_chan_inds{j}) >= minClusterSizes(clusterSizeThreshold)
+        for j = 1:length(Results.cluster_mass_vector)
+            if Results.cluster_mass_vector(j) > Results.cluster_mass_null_cutoff_pos && length(Results.cluster_channel_indices{j}) >= minClusterSizes(clusterSizeThreshold)
                type1Errors(iteration, clusterSizeThreshold) = 1;              
             end  % of if statement
             
-            if cluster_mass_vector(j) < cluster_mass_null_cutoff_neg && length(cluster_chan_inds{j}) >= minClusterSizes(clusterSizeThreshold)
+            if Results.cluster_mass_vector(j) < Results.cluster_mass_null_cutoff_neg && length(Results.cluster_channel_indices{j}) >= minClusterSizes(clusterSizeThreshold)
                type1Errors(iteration, clusterSizeThreshold) = 1;              
             end  % of if statement
         end % for j = 1:length(cluster_mass_vector)
@@ -91,7 +98,13 @@ for i = 1:length(minClusterSizes)
     weakFWER(i) = totalType1Errors(i) / nIterations; % Number of type 1 errors divided by number of iterations
 end
 
+% Create save directory if doesn't exist
+if ~exist('Workspace Saves', 'dir') 
+    mkdir('Workspace Saves');
+end
+
 % Save the workspace to a .mat file
+
 save(['Workspace Saves/realdata_' int2str(useRealData) '_samplesize_' int2str(sampleSize) '_iterations_' int2str(nIterations) '_' datestr(now, 30)]); 
 
 

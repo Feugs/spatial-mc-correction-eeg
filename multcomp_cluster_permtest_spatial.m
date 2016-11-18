@@ -222,6 +222,7 @@ for step = 1:n_total_comparisons
     end % of if uncorrected_t(step)
 end % of for step
 
+%% Generate Null Hypothesis Maximum Cluster Mass Distribution
 % Generate maximum cluster mass distribution from randomly-partitioned datasets
 t_stat = zeros(n_total_comparisons, n_iterations); % Preallocate
 max_pos_cluster_mass = zeros(1, n_iterations); % Preallocate
@@ -235,10 +236,13 @@ for iteration = 1:n_iterations
     temp_dataset_2 = zeros(n_subjects, n_total_comparisons);
     temp_diffscores = zeros(n_subjects, n_total_comparisons);
     
+    % Randomly switch the sign of difference scores (equivalent to
+    % switching labels of conditions/random partitioning).
+    % Done so randomly-allocated condition labels are consistent 
+    % within each participant.
+    temp_signs = (rand(n_subjects, 1) > .5) * 2 - 1; % Switches signs of labels
+
     for step = 1:n_total_comparisons 
-        % Randomly switch the sign of difference scores (equivalent to
-        % switching labels of conditions/random partitioning)
-        temp_signs = (rand(n_subjects, 1) > .5) * 2 - 1; % Switches signs of labels
         
         temp_dataset_1(temp_signs == 1, step) = cond1_data(temp_signs == 1, step);
         temp_dataset_1(temp_signs == -1, step) = cond2_data(temp_signs == -1, step);
@@ -258,7 +262,6 @@ for iteration = 1:n_iterations
             t_stat(step, iteration) = t_yuen; % Recording t statistic for each test
         end
     end
-    
     
         % Marking the sign of each t statistic to avoid clustering pos
         % and neg significant results

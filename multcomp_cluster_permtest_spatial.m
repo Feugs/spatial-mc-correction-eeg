@@ -225,8 +225,7 @@ end % of for step
 %% Generate Null Hypothesis Maximum Cluster Mass Distribution
 % Generate maximum cluster mass distribution from randomly-partitioned datasets
 t_stat = zeros(n_total_comparisons, n_iterations); % Preallocate
-max_pos_cluster_mass = zeros(1, n_iterations); % Preallocate
-max_neg_cluster_mass = zeros(1, n_iterations); % Preallocate
+max_abs_cluster_mass = zeros(1, n_iterations); % Preallocate
 cluster_perm_test_h = zeros(n_total_comparisons, n_iterations); % Preallocate
 t_sign = zeros(n_total_comparisons, n_iterations); % Preallocate
 
@@ -371,15 +370,12 @@ for iteration = 1:n_iterations
     end % of for step
     
     % Find the maximum cluster mass for positie and negative values
-    max_pos_cluster_mass(iteration) = max(cluster_mass_vector);
-    max_neg_cluster_mass(iteration) = min(cluster_mass_vector);
-   
+    max_abs_cluster_mass(iteration) = max(abs(cluster_mass_vector));
 end % of iteration loop
 
 % Calculate the 95th percentiles of maximum cluster mass values (used as decision
 % critieria for statistical significance)
-cluster_mass_null_cutoff_pos = prctile(max_pos_cluster_mass, ((1 - alpha_level /2) * 100));
-cluster_mass_null_cutoff_neg = prctile(max_neg_cluster_mass, ((alpha_level /2) * 100));
+cluster_mass_null_cutoff_abs = prctile(max_abs_cluster_mass, (alpha_level * 100));
 
 %% Calculate cluster masses in the actual (non-permutation) tests
 
@@ -483,23 +479,6 @@ for step = 1:n_total_comparisons
     end % of if cluster_perm_test_h statement
 end % of for step
 
-% Determine whether the cluster masses are above the null cutoff and meet
-% the minimum cluster size constraint
-cluster_sig = zeros(length(cluster_mass_vector), 1); % Preallocate
-
-for cluster_no = 1:length(cluster_mass_vector);
-    if cluster_mass_vector(cluster_no) > cluster_mass_null_cutoff_pos || cluster_mass_vector(cluster_no) < cluster_mass_null_cutoff_neg
-        if length(cluster_channel_indices{cluster_no}) >= min_cluster_size
-            cluster_sig(cluster_no) = 1; % mark cluster as statistically significant
-            cluster_corrected_sig_steps(cluster_channel_indices{1, cluster_no(:)}) = 1;
-        end 
-    end % of if cluster_mass_vector
-end % of for cluster_no
-
-% Create vectors of multiple comparisons corrected hypothesis tests and the
-% t-values derived from tests at each channel
-corrected_h = cluster_corrected_sig_steps;
-t_values = uncorrected_t;
 
 % Calculating a p-value for each cluster
 % p-values are corrected according to Phipson and Smyth (2010) methods
@@ -509,26 +488,31 @@ for cluster_no = 1:length(cluster_mass_vector)
     
     % Calculate the number of permutation samples with cluster masses
     % larger than the observed cluster mass for a given cluster
-    if cluster_mass_vector(cluster_no) > 0 % If a positive difference
-        b = sum(abs(max_pos_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
-    elseif cluster_mass_vector(cluster_no) < 0 % If a negative difference
-        b = sum(abs(max_neg_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
-    end    
+    b = sum(abs(max_abs_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
     p_t = (b + 1) / (n_iterations + 1); % Calculate conservative version of p-value as in Phipson & Smyth, 2010
     
-    cluster_p(cluster_no) = p_t * 2; % Multiplied by 2 as two-tailed
+    cluster_p(cluster_no) = p_t;
        
 end % of for cluster_no
 
 
-% 
-% for cluster_no = 1:length(cluster_mass_vector);
-%     if cluster_mass_vector(cluster_no) > 0
-%         cluster_p(cluster_no) = mean(max_pos_cluster_mass(:) >= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
-%     elseif cluster_mass_vector(cluster_no) < 0
-%         cluster_p(cluster_no) = mean(max_neg_cluster_mass(:) <= cluster_mass_vector(cluster_no)) * 2; % Multiply by 2 for two-tailed
-%     end
-% end % of for cluster_no
+% Determine whether the cluster masses are above the null cutoff and meet
+% the minimum cluster size constraint
+cluster_sig = zeros(length(cluster_mass_vector), 1); % Preallocate
+
+for cluster_no = 1:length(cluster_mass_vector);
+    if cluster_p(cluster_no) < alpha_level
+        if length(cluster_channel_indices{cluster_no}) >= min_cluster_size
+            cluster_sig(cluster_no) = 1; % mark cluster as statistically significant
+            cluster_corrected_sig_steps(cluster_channel_indices{1, cluster_no(:)}) = 1;
+        end % of if length
+    end % of if cluster_mass_vector
+end % of for cluster_no
+
+% Create vectors of multiple comparisons corrected hypothesis tests and the
+% t-values derived from tests at each channel
+corrected_h = cluster_corrected_sig_steps;
+t_values = uncorrected_t;
 
 % Copying the results into a structure to output
 Results.uncorrected_h = uncorrected_h;
@@ -537,7 +521,6 @@ Results.t_values = t_values;
 Results.cluster_sig = cluster_sig;
 Results.cluster_channel_indices = cluster_channel_indices;
 Results.cluster_mass_vector = cluster_mass_vector;
-Results.cluster_mass_null_cutoff_pos = cluster_mass_null_cutoff_pos;
-Results.cluster_mass_null_cutoff_neg = cluster_mass_null_cutoff_neg;
+Results.cluster_mass_null_cutoff_abs = cluster_mass_null_cutoff_abs;
 Results.cluster_p = cluster_p;
 end % of function

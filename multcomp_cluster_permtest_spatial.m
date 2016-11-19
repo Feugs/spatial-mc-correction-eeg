@@ -6,7 +6,18 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 % but could be adapted to use with other statistics such as the trimmed mean.
 % Clustering is performed across channels (spatial clustering).
 %
-% For details on this multiple testing procedure see:
+% This procedure controls the weak family-wise error rate (FWER) at the
+% level alpha. Weak FWER control means that it will control the FWER at 
+% level alpha if there are no true effects anywhere in the data. For
+% statistically signficant clusters inferences should be made about the whole
+% cluster rather than individual electrodes within a cluster.
+%
+% When applying this to your own datasets always test the weak FWER
+% beforehand using the same or similar data/analysis parameters. For
+% example you can do this using randomly generated data or using random
+% partitions of data from two conditions.
+%
+% For information on this multiple testing procedure see:
 % Bullmore, E. T., Suckling, J., Overmeyer, S., Rabe-Hesketh, S., 
 % Taylor, E., & Brammer, M. J. (1999). Global, voxel, and cluster tests, 
 % by theory and permutation, for a difference between two groups of 
@@ -18,10 +29,12 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 % doi 10.1016/j.jneumeth.2007.03.024
 %
 % This function implements a conservative correction for p-values when
-% using permutation tests, as described by Phipson & Smyth (2010).
+% using permutation tests, as described by Phipson & Smyth (2010):
+%
 % Permutation p-values should never be zero: Calculating exact p-values
 % when permutations are randomly drawn. Statistical Applications in
 % Genetics and Molecular Biology, 9, 39. doi 10.2202/1544-6115.1585
+%
 %
 % Inputs:
 %
@@ -32,9 +45,16 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %                                   a subjects x channels matrix
 %
 %   neighbourhood_matrix_filepath   file path to the matlab file containing the
-%                                   channel neighbourhood matrix channeighbstructmat
+%                                   channel neighbourhood matrix
+%                                   "channeighbstructmat"
 %
-% Optional Inputs:
+%   'Key1'                          keyword string for argument 1
+%
+%    Value1                         value of argument 1
+%
+%    ...                            ...
+%		
+% Optional keyword inputs:
 %
 %   alpha                           uncorrected alpha level, default 0.05
 %
@@ -87,20 +107,17 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %                                   i.e. the mass of each cluster. Used for comparing
 %                                   against the null cutoff for NHST.
 %
-%   cluster_mass_null_cufoff_pos    the (1-alpha/2)th percentile of maximum cluster
-%                                   masses returned by the cluster-based permutation
-%                                   test. i.e. the null threshold for positive direction 
-%                                   effects.
+%   cluster_mass_null_cufoff_abs    the (1 - alpha)th percentile of null permutation
+%                                   distribution maximum cluster masses.
+%                                   I.e. the cluster mass statistic above
+%                                   which effects are found to be
+%                                   statistically significant at level
+%                                   alpha.
 %
-%   cluster_mass_null_cufoff_pos    the (alpha/2)th percentile of maximum cluster
-%                                   masses returned by the cluster-based permutation
-%                                   test. i.e. the null threshold for negative direction 
-%                                   effects.
-%
-%   cluster_p                       p-value of cluster, calculated as the
-%                                   number of permutation sample maximum
+%   cluster_p                       p-value of each cluster, calculated as the
+%                                   number of permutation distribution maximum
 %                                   cluster masses larger than the observed
-%                                   cluster mass + 1 divided by the total
+%                                   cluster mass + 1, divided by the total
 %                                   number of permutations + 1. This is the
 %                                   conservative p-value correction in
 %                                   Phipson & Smyth (2010).
@@ -125,8 +142,9 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 %
-%
-% NOTE: In this script a 'step' refers to a channel (i.e. a separate
+% Notes:
+% 
+% In this script a 'step' refers to a channel (i.e. a separate
 % analysis). This is carried over from the temporal clustering script which
 % used 'step' to mean a time-window of interest.
 %
@@ -176,17 +194,17 @@ clear options;
 %% Seed the random number generator
 rng('shuffle'); % Seed random number generator based on computer clock
 
-%% Loading Channel Locations
-load(neighbourhood_matrix_filepath); % Loads channeighbstructmat matrix of channel neighbourhoods
+%% Loading channel neighbourhood matrix
+% Loads channeighbstructmat matrix of channel neighbourhoods.
 % This matrix marks which electrodes are adjacent/connected to which others. 
 % (1 = connected/ 0 = not connected)
-
+load(neighbourhood_matrix_filepath); 
 
 %% Cluster-based multiple testing correction
 
 % Checking whether the number of steps of the first and second datasets are equal
 if size(cond1_data, 2) ~= size(cond2_data, 2)
-   error('Condition 1 and 2 datasets do not contain the same number of channels!');
+   error('Condition 1 and 2 datasets do not contain the same number of channels/tests!');
 end
 if size(cond1_data, 1) ~= size(cond2_data, 1)
    error('Condition 1 and 2 datasets do not contain the same number of subjects!');
@@ -195,6 +213,7 @@ end
 % Generate difference scores between conditions
 diff_scores = cond1_data - cond2_data;
 
+% Calculate number of subjects and tests
 n_subjects = size(diff_scores, 1); % Calculate number of subjects
 n_total_comparisons = size(diff_scores, 2); % Calculating the number of comparisons
 
@@ -203,10 +222,10 @@ uncorrected_h = zeros(1, n_total_comparisons); % preallocate
 uncorrected_t = zeros(1, n_total_comparisons); % preallocate
 uncorrected_t_sign = zeros(1, n_total_comparisons); % preallocate
 
-if use_yuen == 0
+if use_yuen == 0 % If using Student's t
     [uncorrected_h, ~, ~, extra_stats] = ttest(diff_scores, 0, 'Alpha', clustering_alpha);
     uncorrected_t = extra_stats.tstat; % Recording t statistic for each test
-elseif use_yuen == 1
+elseif use_yuen == 1 % If using Yuen's t
     for step = 1:n_total_comparisons
         [uncorrected_h(step), ~, ~, t_yuen, ~, ~, ~, ~] = yuend_ttest(cond1_data(:, step), cond2_data(:, step), trimming, clustering_alpha);
         uncorrected_t(step) = t_yuen; % Recording t statistic for each test
@@ -215,10 +234,10 @@ end
 
 for step = 1:n_total_comparisons
     % Marking the direction of effects
-    if uncorrected_t(step) < 0
+    if uncorrected_t(step) < 0 % Negative difference
         uncorrected_t_sign(step) = -1;
-    else
-        uncorrected_t_sign(step) = 1;  
+    elseif uncorrected_t(step) > 0 % Positive difference
+        uncorrected_t_sign(step) = 1; 
     end % of if uncorrected_t(step)
 end % of for step
 
@@ -230,56 +249,59 @@ cluster_perm_test_h = zeros(n_total_comparisons, n_iterations); % Preallocate
 t_sign = zeros(n_total_comparisons, n_iterations); % Preallocate
 
 for iteration = 1:n_iterations
-    % Draw a random partition sample for each test
-    temp_dataset_1 = zeros(n_subjects, n_total_comparisons);
-    temp_dataset_2 = zeros(n_subjects, n_total_comparisons);
-    temp_diffscores = zeros(n_subjects, n_total_comparisons);
+    % Preallocate data matrices
+    temp_dataset_1 = zeros(n_subjects, n_total_comparisons); % Preallocate
+    temp_dataset_2 = zeros(n_subjects, n_total_comparisons); % Preallocate
+    temp_diffscores = zeros(n_subjects, n_total_comparisons); % Preallocate
     
+    % Draw a random partition sample for each test
     % Randomly switch the sign of difference scores (equivalent to
     % switching labels of conditions/random partitioning).
-    % Done so randomly-allocated condition labels are consistent 
+    % Done so randomly-allocated condition labels for each channel/test are consistent 
     % within each participant.
     temp_signs = (rand(n_subjects, 1) > .5) * 2 - 1; % Switches signs of labels
 
     for step = 1:n_total_comparisons 
-        
+        % Allocate data to each condition based on random partitioning
         temp_dataset_1(temp_signs == 1, step) = cond1_data(temp_signs == 1, step);
         temp_dataset_1(temp_signs == -1, step) = cond2_data(temp_signs == -1, step);
         temp_dataset_2(temp_signs == 1, step) = cond2_data(temp_signs == 1, step);
         temp_dataset_2(temp_signs == -1, step) = cond1_data(temp_signs == -1, step);
-        
+        % Calculate resulting difference scores
         temp_diffscores(1:n_subjects, step) = temp_dataset_1(1:n_subjects, step) - temp_dataset_2(1:n_subjects, step);
     end % of for step
         
     % Perform t tests (Student's or Yuen's paired-samples t)
-    if use_yuen == 0
+    if use_yuen == 0 % If using Studen'ts t
         [cluster_perm_test_h(:, iteration), ~, ~, temp_stats] = ttest(temp_diffscores, 0, 'Alpha', clustering_alpha);
         t_stat(:, iteration) = temp_stats.tstat; % Get t statistic
-    elseif use_yuen == 1
+    elseif use_yuen == 1 % If using Yuen's t
         for step = 1:n_total_comparisons
             [cluster_perm_test_h(step, iteration), ~, ~, t_yuen, ~, ~, ~, ~] = yuend_ttest(temp_dataset_1(:, step), temp_dataset_2(:, step), trimming, clustering_alpha);
             t_stat(step, iteration) = t_yuen; % Recording t statistic for each test
-        end
-    end
+        end % of for step
+    end % of if use_yuen
     
         % Marking the sign of each t statistic to avoid clustering pos
         % and neg significant results
         for step = 1:n_total_comparisons
             if t_stat(step, iteration) < 0;
                t_sign(step, iteration) = -1; 
-            else
+            elseif t_stat(step, iteration) > 0;
                t_sign(step, iteration) = 1; 
             end % of if t_stat statement
-        end
-    % Initialise a matrix recording whether a channel has been assessed
-    channel_processed = zeros(1, n_total_comparisons);
+        end % of for step
+        
+    % Create/reset a matrix recording whether a channel has been evaluated
+    % for inclusion in clusters
+    channel_processed = zeros(1, n_total_comparisons); % Preallocate
     
-    % Initialise a cell array to record which channels belong to which cluster
+    % Create/reset a cell array to record which channels belong to which cluster
     cluster_channel_indices = {};
     
     % Identify clusters and generate a maximum cluster statistic
     cluster_mass_vector = [0]; % Resets vector of cluster masses
-    cluster_counter = 0;
+    cluster_counter = 0; % Counts how many clusters found in each iteration
     
     for step = 1:n_total_comparisons    
         
@@ -287,36 +309,38 @@ for iteration = 1:n_iterations
         % already been processed
         if cluster_perm_test_h(step, iteration) == 1 && channel_processed(step) == 0
         
-            % Mark that this channel has been processed
-            channel_processed(step) = 1;
+        % Mark that this channel has been processed
+        channel_processed(step) = 1;
         
-            % Increase the cluster counter index
-            cluster_counter = cluster_counter + 1;
-            
-            % Add channel to vector of cluster channels
-            cluster_channel_indices{cluster_counter}(1) = step;
-            
-            % Mark neighboring channels
-            neighbouring_channels = []; % Reset neighbouring channels vector
-            channel_counter = 1; % Reset counter for neighbouring channels
-            for i = 1:n_total_comparisons
-               % If channel is a neighbour, not yet processed and
-               % statistically significant in the same direction as the
-               % other channels in the cluster
-               if channeighbstructmat(step, i) == 1 && cluster_perm_test_h(i, iteration) == 1 && channel_processed(i) == 0 && t_sign(step, iteration) == t_sign(i, iteration)
+        % Increase the cluster counter index
+        cluster_counter = cluster_counter + 1;
 
-                   % Mark that this channel has been processed
-                   channel_processed(i) = 1;
+        % Add channel to vector of cluster channels
+        cluster_channel_indices{cluster_counter}(1) = step;
 
-                   % Add channel to vector of cluster channels
-                   cluster_channel_indices{cluster_counter}(end + 1) = i;
+        % Mark neighboring channels
+        neighbouring_channels = []; % Reset neighbouring channels vector
+        channel_counter = 1; % Reset counter for neighbouring channels within a cluster
+        
+        for i = 1:n_total_comparisons
+           % If channel is a neighbour, not yet processed and
+           % statistically significant in the same direction as the
+           % other channels in the cluster
+           if channeighbstructmat(step, i) == 1 && cluster_perm_test_h(i, iteration) == 1 && channel_processed(i) == 0 && t_sign(step, iteration) == t_sign(i, iteration)
 
-                   % Mark it as a neighbouring channel for searching below
-                   neighbouring_channels(channel_counter) = i;
-                   channel_counter = channel_counter + 1;
-                   
-               end % of if channneighbstructmat
-            end % of for i = 1:nChannels
+               % Mark that this channel has been processed
+               channel_processed(i) = 1;
+
+               % Add channel to vector of cluster channels
+               cluster_channel_indices{cluster_counter}(end + 1) = i;
+
+               % Mark it as a neighbouring channel for further searching below
+               neighbouring_channels(channel_counter) = i;
+               % Increase counter of channels within a cluster by 1
+               channel_counter = channel_counter + 1;
+
+           end % of if channneighbstructmat
+        end % of for i = 1:n_total_comparisons
                    
             % Scan for neighboring channels to add to that cluster
             keep_searching = 1; % Initialise variable for while loop
@@ -377,7 +401,7 @@ end % of iteration loop
 % critieria for statistical significance)
 cluster_mass_null_cutoff_abs = prctile(max_abs_cluster_mass, (alpha_level * 100));
 
-%% Calculate cluster masses in the actual (non-permutation) tests
+%% Calculate cluster masses using observed (non-permutation) data
 
 % Initialise a matrix recording whether a channel has been assessed
 channel_processed = zeros(1, n_total_comparisons);
@@ -429,10 +453,11 @@ for step = 1:n_total_comparisons
            end % of if channneighbstructmat
         end % of for i = 1:nChannels
 
-        % Scan for neighboring channels to add to that cluster
-        keep_searching = 1; % Initialise variable for while loop
+        % Scan for more neighbouring channels to add to that cluster
+        keep_searching = 1; % Set variable for while loop
 
-        while keep_searching == 1
+        while keep_searching == 1 % While there are still channels to check
+%                                   for cluster inclusion
             
             keep_searching = 0;
 
@@ -462,10 +487,10 @@ for step = 1:n_total_comparisons
                         neighbouring_channels(neighbouring_channel_counter) = k;
                         neighbouring_channel_counter = neighbouring_channel_counter + 1;
 
-                    end % of if cluster_perm_test_h
+                    end % of if uncorrected_h
                 end % of for k
             end % of for chanind
-        end % of while keepsearching
+        end % of while keep_searching
 
         % Sum the t-values of the vector of neighbouring sig. channels to
         % make the cluster statistic. Record in a matrix
@@ -476,13 +501,13 @@ for step = 1:n_total_comparisons
         % Mark channel as having been already processed
         channel_processed(step) = 1;
         
-    end % of if cluster_perm_test_h statement
+    end % of if uncorrected_h
 end % of for step
 
 
-% Calculating a p-value for each cluster
+%% Calculate a p-value for each cluster
 % p-values are corrected according to Phipson and Smyth (2010) methods
-cluster_p = ones(length(cluster_mass_vector), 1); % Preallocate p-values
+cluster_p = ones(length(cluster_mass_vector), 1); % Preallocate p-values vector
 
 for cluster_no = 1:length(cluster_mass_vector)
     
@@ -490,13 +515,11 @@ for cluster_no = 1:length(cluster_mass_vector)
     % larger than the observed cluster mass for a given cluster
     b = sum(abs(max_abs_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
     p_t = (b + 1) / (n_iterations + 1); % Calculate conservative version of p-value as in Phipson & Smyth, 2010
-    
-    cluster_p(cluster_no) = p_t;
+    cluster_p(cluster_no) = p_t; % Corrected conservative p-value
        
 end % of for cluster_no
 
-
-% Determine whether the cluster masses are above the null cutoff and meet
+% Determine whether the cluster masses are statistically significant and meet
 % the minimum cluster size constraint
 cluster_sig = zeros(length(cluster_mass_vector), 1); % Preallocate
 

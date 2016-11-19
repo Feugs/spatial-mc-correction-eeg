@@ -399,7 +399,7 @@ end % of iteration loop
 
 % Calculate the 95th percentiles of maximum cluster mass values (used as decision
 % critieria for statistical significance)
-cluster_mass_null_cutoff_abs = prctile(max_abs_cluster_mass, (alpha_level * 100));
+cluster_mass_null_cutoff_abs = prctile(max_abs_cluster_mass, ((1 - alpha_level) * 100));
 
 %% Calculate cluster masses using observed (non-permutation) data
 

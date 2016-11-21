@@ -107,9 +107,9 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %                                   i.e. the mass of each cluster. Used for comparing
 %                                   against the null cutoff for NHST.
 %
-%   cluster_mass_null_cufoff_abs    the (1 - alpha)th percentile of null permutation
+%   cluster_mass_null_cufoff_abs    the (1 - alpha / 2)th percentile of null permutation
 %                                   distribution maximum cluster masses.
-%                                   I.e. the cluster mass statistic above
+%                                   I.e. the absolute cluster mass statistic above
 %                                   which effects are found to be
 %                                   statistically significant at level
 %                                   alpha.
@@ -117,10 +117,11 @@ function [Results] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, n
 %   cluster_p                       p-value of each cluster, calculated as the
 %                                   number of permutation distribution maximum
 %                                   cluster masses larger than the observed
-%                                   cluster mass + 1, divided by the total
-%                                   number of permutations + 1. This is the
-%                                   conservative p-value correction in
+%                                   cluster mass * 2 (for two-tailed) + 1, 
+%                                   divided by the total number of permutations + 1.
+%                                   This is the conservative p-value correction in
 %                                   Phipson & Smyth (2010).
+%                                   
 %
 % Example:      [RESULTS] = multcomp_cluster_permtest_spatial(cond1_data, cond2_data, 'expected_chanlocs.mat', 'alpha', 0.05, 'iterations', 1000, 'clusteringalpha', 0.05, 'yuen_t', 1)
 %
@@ -244,7 +245,7 @@ end % of for step
 %% Generate Null Hypothesis Maximum Cluster Mass Distribution
 % Generate maximum cluster mass distribution from randomly-partitioned datasets
 t_stat = zeros(n_total_comparisons, n_iterations); % Preallocate
-max_abs_cluster_mass = zeros(1, n_iterations); % Preallocate
+max_cluster_mass = zeros(1, n_iterations); % Preallocate
 cluster_perm_test_h = zeros(n_total_comparisons, n_iterations); % Preallocate
 t_sign = zeros(n_total_comparisons, n_iterations); % Preallocate
 
@@ -393,13 +394,14 @@ for iteration = 1:n_iterations
         
     end % of for step
     
-    % Find the maximum cluster mass for positie and negative values
-    max_abs_cluster_mass(iteration) = max(abs(cluster_mass_vector));
+    % Find the maximum cluster mass for positive values (could use negative
+    % values, doesn't matter as distribution is assumed to be symmetrical).
+    max_cluster_mass(iteration) = max(cluster_mass_vector);
 end % of iteration loop
 
 % Calculate the 95th percentiles of maximum cluster mass values (used as decision
 % critieria for statistical significance)
-cluster_mass_null_cutoff_abs = prctile(max_abs_cluster_mass, ((1 - alpha_level) * 100));
+cluster_mass_null_cutoff = prctile(max_cluster_mass, ((1 - alpha_level / 2) * 100));
 
 %% Calculate cluster masses using observed (non-permutation) data
 
@@ -513,11 +515,15 @@ for cluster_no = 1:length(cluster_mass_vector)
     
     % Calculate the number of permutation samples with cluster masses
     % larger than the observed cluster mass for a given cluster
-    b = sum(abs(max_abs_cluster_mass) >= abs(cluster_mass_vector(cluster_no)));
+    b = sum(abs(max_cluster_mass) >= abs(cluster_mass_vector(cluster_no))) * 2; % multiply by 2 for two-tailed
     p_t = (b + 1) / (n_iterations + 1); % Calculate conservative version of p-value as in Phipson & Smyth, 2010
     cluster_p(cluster_no) = p_t; % Corrected conservative p-value
        
 end % of for cluster_no
+
+% Adjust p-values of clusters that are larger than 1 (can happen due to
+% nature of assumed symmetric null distribution)
+cluster_p(cluster_p > 1) = 1;
 
 % Determine whether the cluster masses are statistically significant and meet
 % the minimum cluster size constraint
@@ -544,6 +550,6 @@ Results.t_values = t_values;
 Results.cluster_sig = cluster_sig;
 Results.cluster_channel_indices = cluster_channel_indices;
 Results.cluster_mass_vector = cluster_mass_vector;
-Results.cluster_mass_null_cutoff_abs = cluster_mass_null_cutoff_abs;
+Results.cluster_mass_null_cutoff_abs = cluster_mass_null_cutoff;
 Results.cluster_p = cluster_p;
 end % of function

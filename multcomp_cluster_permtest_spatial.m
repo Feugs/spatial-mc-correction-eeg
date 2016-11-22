@@ -401,6 +401,7 @@ end % of iteration loop
 
 % Calculate the 95th percentiles of maximum cluster mass values (used as decision
 % critieria for statistical significance)
+% Actually calculates 97.5th percentiles for two-tailed testing.
 cluster_mass_null_cutoff = prctile(max_cluster_mass, ((1 - alpha_level / 2) * 100));
 
 %% Calculate cluster masses using observed (non-permutation) data
@@ -515,8 +516,9 @@ for cluster_no = 1:length(cluster_mass_vector)
     
     % Calculate the number of permutation samples with cluster masses
     % larger than the observed cluster mass for a given cluster
-    b = sum(abs(max_cluster_mass) >= abs(cluster_mass_vector(cluster_no))) * 2; % multiply by 2 for two-tailed
+    b = sum(abs(max_cluster_mass) >= abs(cluster_mass_vector(cluster_no))); % multiply by 2 for two-tailed
     p_t = (b + 1) / (n_iterations + 1); % Calculate conservative version of p-value as in Phipson & Smyth, 2010
+    p_t = p_t * 2; % Doubling p-value for two-tailed (essentially a Bonferroni correction for two tests)
     cluster_p(cluster_no) = p_t; % Corrected conservative p-value
        
 end % of for cluster_no

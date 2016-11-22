@@ -359,7 +359,7 @@ for iteration = 1:n_iterations
                     for k = 1:n_total_comparisons
                         % Check whether there are neighbouring channels with sig.
                         % results in the same direction
-                        if cluster_perm_test_h(k, 1) == 1 && channel_processed(k) == 0 && channeighbstructmat(chanind, k) == 1 && t_sign(step, iteration) == t_sign(k, iteration)
+                        if cluster_perm_test_h(k, iteration) == 1 && channel_processed(k) == 0 && channeighbstructmat(chanind, k) == 1 && t_sign(step, iteration) == t_sign(k, iteration)
 
                             % Set to keep searching for other channels in next loop iteration
                             keep_searching = 1; 
